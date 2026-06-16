@@ -174,15 +174,38 @@ const MarkdownRenderer = ({ content }: { content: string }) => {
       if (line.match(/^---+$/)) { inFormSection = false; elements.push(<hr key={`hr-${elements.length}`} style={{ border: 'none', borderTop: '1px solid #374151', margin: '24px 0' }} />); continue; }
       if (line.trim() === '') continue;
       if (line.includes('FORM OUTPUT') || line.includes('Form Output')) inFormSection = true;
-      if (inFormSection) {
-        const colonIndex = line.indexOf(': ');
-        if (colonIndex > 0) {
-          const question = line.substring(0, colonIndex).replace(/\*\*/g, '').trim();
-          const answer = line.substring(colonIndex + 2).replace(/\*\*/g, '').trim();
-          if (seenQuestions.has(question.toLowerCase())) continue;
+       if (inFormSection) {
+        // Split on ": " if present, otherwise on the first "? " (questions end in ?)
+        let splitIndex = line.indexOf(': ');
+        let sepLen = 2;
+        if (splitIndex < 0) {
+          const qMatch = line.indexOf('? ');
+          if (qMatch >= 0) { splitIndex = qMatch + 1; sepLen = 2; } // keep the ? on the question
+        }
+        if (splitIndex > 0) {
+          const question = line.substring(0, splitIndex).replace(/\*\*/g, '').trim();
+          const answer = line.substring(splitIndex + sepLen).replace(/\*\*/g, '').trim();
+          if (seenQuestions.has(question.toLowerCase())) { continue; }
           seenQuestions.add(question.toLowerCase());
           if (answer.length > 0) {
-            elements.push(<div key={`field-${elements.length}`} style={{ marginBottom: '12px' }}><span style={{ color: '#b45309', fontWeight: '600', fontSize: '14px' }}>{question}</span><span style={{ color: '#f9fafb', fontSize: '14px', marginLeft: '8px', fontWeight: '400' }}>{answer}</span></div>);
+            elements.push(
+              <div key={`field-${elements.length}`} style={{ marginBottom: '12px', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px' }}>
+                <span style={{ color: '#f9fafb', fontWeight: '600', fontSize: '14px' }}>{question}</span>
+                <span
+                  onClick={(e) => {
+                    navigator.clipboard.writeText(answer);
+                    const el = e.currentTarget;
+                    const prev = el.textContent;
+                    el.textContent = '✓ Copied';
+                    setTimeout(() => { el.textContent = prev; }, 1000);
+                  }}
+                  title="Click to copy"
+                  style={{ color: '#ef4444', fontSize: '14px', fontWeight: '400', cursor: 'pointer', padding: '1px 6px', borderRadius: '4px', backgroundColor: 'rgba(239, 68, 68, 0.08)', userSelect: 'all' }}
+                >
+                  {answer}
+                </span>
+              </div>
+            );
           }
           continue;
         }
