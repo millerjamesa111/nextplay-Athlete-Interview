@@ -50,18 +50,20 @@ Return ONLY the JSON object, no other text. Identify the top 3-5 patterns, order
       messages: [{ role: 'user', content: analysisPrompt }],
     });
 
-    const content = response.content[0];
-    if (content.type === 'text') {
-      const jsonMatch = content.text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const report = JSON.parse(jsonMatch[0]);
-        return Response.json(report);
-      }
+    const textBlock = response.content.find((b) => b.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') {
+      return Response.json({ error: 'No text in model response' }, { status: 500 });
     }
 
-    return Response.json({ error: 'Could not parse response' }, { status: 500 });
-  } catch (error) {
-    console.error('Error generating trends:', error);
-    return Response.json({ error: error instanceof Error ? error.message : 'Failed to generate trends' }, { status: 500 });
-  }
-}
+    let raw = textBlock.text.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return Response.json({ error: 'No JSON found in response' }, { status: 500 });
+    }
+
+    try {
+      const report = JSON.parse(jsonMatch[0]);
+      return Response.json(report);
+    } catch {
+      return Response.json({ error: 'Invalid JSON from model' }, { status: 500 });
+    }
