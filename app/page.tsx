@@ -180,7 +180,7 @@ const MarkdownRenderer = ({ content }: { content: string }) => {
         let sepLen = 2;
         if (splitIndex < 0) {
           const qMatch = line.indexOf('? ');
-          if (qMatch >= 0) { splitIndex = qMatch + 1; sepLen = 2; } // keep the ? on the question
+          if (qMatch >= 0) { splitIndex = qMatch + 1; sepLen = 1; } // keep the ? on the question, skip only the space
         }
         if (splitIndex > 0) {
           const question = line.substring(0, splitIndex).replace(/\*\*/g, '').trim();
