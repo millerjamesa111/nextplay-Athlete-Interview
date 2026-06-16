@@ -45,7 +45,7 @@ Analyze these and return a JSON object with this exact structure:
 Return ONLY the JSON object, no other text. Identify the top 3-5 patterns, ordered by frequency.`;
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4000,
       messages: [{ role: 'user', content: analysisPrompt }],
     });
