@@ -22,7 +22,7 @@ Your job is to identify PATTERNS — what issues keep showing up across multiple
 ${replayMoments.map((r: any, i: number) => `
 ---
 CALL ${i + 1}: ${r.athleteName} (Rep: ${r.repName}, Grade: ${r.grade})
-${r.moments}
+${(r.moments || '').slice(0, 2000)}
 `).join('\n')}
 
 ---
@@ -46,7 +46,7 @@ Return ONLY the JSON object, no other text. Identify the top 3-5 patterns, order
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1500,
+      max_tokens: 4000,
       messages: [{ role: 'user', content: analysisPrompt }],
     });
 
@@ -62,6 +62,6 @@ Return ONLY the JSON object, no other text. Identify the top 3-5 patterns, order
     return Response.json({ error: 'Could not parse response' }, { status: 500 });
   } catch (error) {
     console.error('Error generating trends:', error);
-    return Response.json({ error: 'Failed to generate trends' }, { status: 500 });
+    return Response.json({ error: error instanceof Error ? error.message : 'Failed to generate trends' }, { status: 500 });
   }
 }
