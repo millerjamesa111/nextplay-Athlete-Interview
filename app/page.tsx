@@ -409,7 +409,7 @@ export default function NextPlayCoachingApp() {
     if (filtered.length < 2) { alert('Need at least 2 submissions to generate a trends report.'); return; }
     const replayMoments = filtered.map(s => {
       const output = s.output || '';
-      const replayMatch = output.match(/### 5\. REPLAY THESE MOMENTS([\s\S]*?)(?=###|$)/i);
+      const replayMatch = output.match(/#*\s*\*{0,2}\d*\.?\s*REPLAY THESE MOMENTS\*{0,2}([\s\S]*?)(?=\n#{1,3}\s|\n\*\*\d+\.|\n---|$)/i);
       return { repName: s.repName, athleteName: s.athleteName, grade: s.grade, date: s.timestamp, moments: replayMatch ? replayMatch[1].trim() : '' };
     }).filter(r => r.moments.length > 0);
     if (replayMoments.length < 2) { alert('Not enough "Replay These Moments" data to analyze.'); return; }
