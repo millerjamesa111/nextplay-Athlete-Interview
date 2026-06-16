@@ -55,7 +55,7 @@ Return ONLY the JSON object, no other text. Identify the top 3-5 patterns, order
       return Response.json({ error: 'No text in model response' }, { status: 500 });
     }
 
-    let raw = textBlock.text.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const raw = textBlock.text.replace(/```json/gi, '').replace(/```/g, '').trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return Response.json({ error: 'No JSON found in response' }, { status: 500 });
@@ -67,3 +67,8 @@ Return ONLY the JSON object, no other text. Identify the top 3-5 patterns, order
     } catch {
       return Response.json({ error: 'Invalid JSON from model' }, { status: 500 });
     }
+  } catch (error) {
+    console.error('Error generating trends:', error);
+    return Response.json({ error: error instanceof Error ? error.message : 'Failed to generate trends' }, { status: 500 });
+  }
+}
