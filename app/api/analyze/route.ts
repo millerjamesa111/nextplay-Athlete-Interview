@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     // Create streaming response
     const stream = await anthropic.messages.stream({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2500,
+      max_tokens: 8000,
       system: fullSystemPrompt,
       messages: [{ role: 'user', content: transcript }],
     });
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     const readable = new ReadableStream({
       async start(controller) {
         let fullText = '';
-        
+
         for await (const event of stream) {
           if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
             const text = event.delta.text;
@@ -58,7 +58,15 @@ export async function POST(request: NextRequest) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text, fullText })}\n\n`));
           }
         }
-        
+
+        // Log why the model stopped (end_turn = finished naturally, max_tokens = hit ceiling)
+        try {
+          const finalMessage = await stream.finalMessage();
+          console.log('[analyze] stop_reason:', finalMessage.stop_reason, '| output_tokens:', finalMessage.usage?.output_tokens);
+        } catch (e) {
+          console.error('[analyze] could not read finalMessage:', e);
+        }
+
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, fullText })}\n\n`));
         controller.close();
       },
