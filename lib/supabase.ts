@@ -42,6 +42,18 @@ export interface Submission {
   flagged: boolean;
   transcript_header: string | null;  // v7: for duplicate detection
   rep_id: string | null;              // v7: link to reps table
+  // v8: parent calls
+  call_type?: 'athlete' | 'parent' | null;
+  athlete_submission_id?: string | null;
+  transcript_url?: string | null;
+  recording_url?: string | null;
+  parent_name?: string | null;
+  outcome?: string | null;
+  payment_type?: string | null;
+  athlete_context?: string | null;
+  prep_output?: string | null;
+  booking_priority?: string | null;
+  booking_output?: string | null;
 }
 
 export interface Rep {
@@ -50,6 +62,7 @@ export interface Rep {
   rep_code: string;
   active: boolean;
   created_at: string;
+  can_parent?: boolean | null;        // v8
 }
 
 export interface Setting {
