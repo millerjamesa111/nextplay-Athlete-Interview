@@ -341,6 +341,7 @@ const extractGrade = (text: string) => {
 const normalizeOutcome = (raw: string | null): string | null => {
   if (!raw) return null;
   const r = raw.toLowerCase();
+  if (r.includes('incomplete')) return 'Call Incomplete';
   if (r.includes('30')) return 'Enrolled – 30 Day';
   if (r.includes('no enroll') || r.includes('not enroll')) return 'No Enrollment';
   if (r.includes('follow')) return 'Follow-up Booked';
@@ -380,7 +381,7 @@ const extractSection = (text: string, heading: string) => {
   if (idx < 0) return '';
   const after = text.slice(text.indexOf('\n', idx) + 1);
   const end = after.search(/\n#{1,3} /);
-  return (end >= 0 ? after.slice(0, end) : after).trim();
+  return (end >= 0 ? after.slice(0, end) : after).replace(/\n-{3,}\s*$/, '').replace(/^-{3,}\s*$/gm, '').trim();
 };
 
 const extractTranscriptHeader = (transcript: string): string => transcript.split('\n')[0].trim();
@@ -945,6 +946,9 @@ export default function NextPlayCoachingApp() {
           {sub.callType === 'parent' && needsRecurringReminder(sub.outcome, sub.paymentType) && (
             <Banner tone="warning">⚠️ Set up the recurring / scheduled payment in GoHighLevel ({sub.paymentType}).</Banner>
           )}
+          {sub.callType === 'parent' && sub.outcome === 'Call Incomplete' && (
+            <Banner tone="info">📼 Recording ends before the investment. If the call dropped and you rejoined, submit again with both transcripts pasted together for a full grade.</Banner>
+          )}
           {athlete && canNav && (
             <div><button onClick={() => { setSelectedSubmission(athlete); setDetailTab('results'); }} style={{ ...ghostBtn, fontSize: '12px' }}>← Open athlete interview ({athlete.repName}, {fmtDate(athlete)})</button></div>
           )}
@@ -1013,6 +1017,7 @@ export default function NextPlayCoachingApp() {
       <div style={{ marginBottom: '20px' }}>
         <label style={labelStyle}>Paste Parent Call Transcript</label>
         <textarea id="parent-transcript-input" placeholder="Parent Call With Jane Smith - 2026/11/17 18:00 CST - Transcript..." style={textareaStyle} />
+        <p style={{ fontSize: '12px', color: styles.colors.textMuted, marginTop: '8px' }}>Call dropped and you rejoined? Paste both transcripts here, one after the other.</p>
       </div>
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
         <div style={{ flex: '1 1 260px' }}>

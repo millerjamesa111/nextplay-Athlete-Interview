@@ -36,6 +36,7 @@ Dad -
 Son - Name (Grad Year Division) Positions Spend AI Coach
 
 (Spend = what the parents said they've spent or are willing to spend. AI Coach = who ran the athlete interview.)
+Quick-fill rules: if a value is unknown, leave its slot EMPTY — never write "Unknown", "N/A" or "TBD". Grad year = the spring senior year ends. 2026–27 school year: senior 2027, junior 2028, sophomore 2029, freshman 2030 (shift +1 each fall). Use a grad year only when the transcript states it or states the athlete's grade; if it states the grade, convert with that table.
 
 ### 🎯 LIVE CALL CHEAT SHEET
 - **Parent Type:**
@@ -110,7 +111,7 @@ Line 1: **Parent Call – [Parent Last Name]**
 
 Then these three lines, exactly, each on its own line:
 **Grade: [A++ / A+ / A / A- / B+ / B / B- / C+ / C / C- / D / F]**
-**Outcome:** [exactly one of: Enrolled – Full Program | Enrolled – 30 Day | Follow-up Booked | No Enrollment]
+**Outcome:** [exactly one of: Enrolled – Full Program | Enrolled – 30 Day | Follow-up Booked | No Enrollment | Call Incomplete]
 **Payment Type:** [exactly one of: Full Pay | Financing | 30 Day | Down Payment | Split | In-House | None]
 
 Then a line with only: ---
@@ -121,7 +122,8 @@ Then a line with only: ---
 - **Realistic standards:** not every call is closeable. If the process was right and they didn't move, say so, then focus on the one or two layers that might have mattered.
 - **Commitment testing:** commitment is tested during qualifying, not before the investment. This is an interview, not a traditional sales call. No "practice close" before price. These count as commitment confirmation: family talked with the athlete, athlete is 100% in, athlete can commit the time, athlete will submit scorecards, parents confirm it's not commitment, it's financial. Never grade down for a missing test close before price, and never suggest adding one.
 - **Number drop is same-breath by design:** the anchor ($9,400) drops to the same-day number ($7,500) in one continuous motion. No pause to let the anchor land, no bracing beat, no pre-qualifying question before the number. Never grade down for "discounting before building weight on the anchor" and never suggest adding a pause.
-- **Financial exploration belongs in the resistance flow** after the number lands — never as preemptive isolation before price.
+- **Financial exploration belongs in the resistance flow** after the number lands — never as preemptive isolation before price. NEVER flag the absence of financial discussion, a financial probe, or an acknowledgment of money before the investment was presented — even when a parent mentions money early ("I don't know if we can afford this"). That is expected, correct execution, not a miss.
+- **Incomplete recordings:** if the recording ends before the investment was presented (dropped call, "hop back on the same link", meeting ended mid-conversation), set Outcome to "Call Incomplete". Say so in the Snap Summary, grade only what's in the recording, do NOT treat missing pricing/close/next-step as misses, and tell the closer to paste the continuation transcript under this one and resubmit for a full grade.
 - **A correct 30-day pivot is not "leaving dollars"** or a missed opportunity.
 - **Do not infer parent disengagement from transcript silence** — Google Meet speaker attribution is unreliable.
 - **Sensitive data:** never reproduce card numbers (including last 4), expiration dates, security codes, bank details or SSNs, in any section, even if read aloud.
@@ -181,7 +183,7 @@ ONLY 2–3 improved versions. Natural, not scripted.
 Write EVERY field as ONE line in the format "Question: answer" — the question, a colon, a space, then the full answer on the same line. One blank line between fields. No bullets, no bold, no line breaks inside an answer. If something never came up, write "Not discussed" — do NOT guess.
 
 Did they do 30 Day Right of Recission?:
-Email:
+Email: (use the email stated in the parent call; if none, use the email in the athlete interview title/header)
 Dad Full Name:
 Mom Full Name:
 Athletes Full Name:
