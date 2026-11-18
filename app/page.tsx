@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase, Submission, Rep } from '@/lib/supabase';
 import { DEFAULT_SYSTEM_PROMPT } from '@/lib/system-prompt';
 import {
@@ -458,6 +458,7 @@ export default function NextPlayCoachingApp() {
   const [selectedSubmission, setSelectedSubmission] = useState<LocalSubmission | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [filterRep, setFilterRep] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [filterGrade, setFilterGrade] = useState('all');
   const [filterType, setFilterType] = useState<'all' | CallType | 'upcoming'>('all');
   const [filterDateRange, setFilterDateRange] = useState('all');
@@ -873,7 +874,16 @@ export default function NextPlayCoachingApp() {
     else alert('Failed to update. Did you run the v8 Supabase migration?');
   };
 
+  // Lowercased search text per submission (names, email/header, rep, transcript) — built once per data change
+  const searchIndex = useMemo(() => {
+    const m: Record<string, string> = {};
+    submissions.forEach(s => { m[s.id] = `${s.athleteName} ${s.parentName || ''} ${s.repName} ${s.transcriptHeader || ''} ${s.transcript}`.toLowerCase(); });
+    return m;
+  }, [submissions]);
+  const searchTerms = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
   const filteredSubmissions = submissions.filter(sub => {
+    if (searchTerms.length && !searchTerms.every(t => (searchIndex[sub.id] || '').includes(t))) return false;
     if (filterRep !== 'all' && normalizeRepName(sub.repName) !== filterRep) return false;
     if (filterGrade !== 'all' && sub.grade?.charAt(0) !== filterGrade) return false;
     if (filterType === 'upcoming') return sub.callType === 'athlete' && !!sub.parentCallAt && !isPastCall(sub.parentCallAt);
@@ -1555,6 +1565,14 @@ export default function NextPlayCoachingApp() {
                       </div>
                     ) : (
                       <>
+                        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
+                          <div style={{ position: 'relative', flex: '1 1 auto', maxWidth: '520px' }}>
+                            <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="🔍 Search athlete, parent, email, rep..."
+                              style={{ ...inputStyle, backgroundColor: styles.colors.bgCard, paddingRight: '36px' }} />
+                            {searchQuery && <button onClick={() => setSearchQuery('')} title="Clear search" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: styles.colors.textMuted, cursor: 'pointer', fontSize: '16px' }}>✕</button>}
+                          </div>
+                          {searchQuery.trim() && <span style={{ color: styles.colors.textMuted, fontSize: '13px', whiteSpace: 'nowrap' }}>{filteredSubmissions.length} {filteredSubmissions.length === 1 ? 'match' : 'matches'}</span>}
+                        </div>
                         <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
                           <select value={filterType} onChange={(e) => setFilterType(e.target.value as 'all' | CallType | 'upcoming')} style={{ padding: '10px 16px', backgroundColor: styles.colors.bgCard, border: `1px solid ${styles.colors.border}`, borderRadius: '8px', color: styles.colors.text, fontSize: '14px' }}>
                             <option value="all">All Call Types</option><option value="upcoming">📅 Upcoming Parent Calls</option><option value="athlete">Athlete Interviews</option><option value="parent">Parent Calls</option>
