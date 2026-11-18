@@ -54,6 +54,7 @@ export interface Submission {
   prep_output?: string | null;
   booking_priority?: string | null;
   booking_output?: string | null;
+  parent_call_at?: string | null;     // v8.1: when the parent call is booked
 }
 
 export interface Rep {

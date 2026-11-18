@@ -311,6 +311,7 @@ interface LocalSubmission {
   prepOutput: string | null;
   bookingPriority: string | null;
   bookingOutput: string | null;
+  parentCallAt: string | null; // v8.1
 }
 
 interface TrendsReport {
@@ -386,6 +387,20 @@ const extractSection = (text: string, heading: string) => {
 
 const extractTranscriptHeader = (transcript: string): string => transcript.split('\n')[0].trim();
 
+const extractParentCallAt = (text: string): string | null => {
+  const m = text.match(/Parent call booked:\s*\**\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)/i);
+  if (!m) return null;
+  const d = new Date(m[1]);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+};
+
+// "Thu 11/20, 7:00 PM" in the viewer's time zone
+const fmtCallAt = (iso: string | null) => iso ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+const isPastCall = (iso: string | null) => !!iso && new Date(iso).getTime() < Date.now();
+const toLocalInput = (iso: string | null) => { if (!iso) return ''; const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
+const RECENT_DAYS = 14;
+const isRecent = (sub: { interviewDate: string | null; timestamp: string }) => { const d = new Date(sub.interviewDate || sub.timestamp).getTime(); return !isNaN(d) && Date.now() - d < RECENT_DAYS * 86400000; };
+
 const extractAthleteName = (text: string) => {
   const nameMatch = text.match(/Athlete Interview\s*[–-]\s*(\w+)/i) || text.match(/Athlete's Name:\s*([^\n]+)/i);
   return nameMatch ? nameMatch[1].trim() : 'Unknown';
@@ -444,7 +459,7 @@ export default function NextPlayCoachingApp() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [filterRep, setFilterRep] = useState('all');
   const [filterGrade, setFilterGrade] = useState('all');
-  const [filterType, setFilterType] = useState<'all' | CallType>('all');
+  const [filterType, setFilterType] = useState<'all' | CallType | 'upcoming'>('all');
   const [filterDateRange, setFilterDateRange] = useState('all');
   const [filterDateStart, setFilterDateStart] = useState('');
   const [filterDateEnd, setFilterDateEnd] = useState('');
@@ -487,6 +502,9 @@ export default function NextPlayCoachingApp() {
   const [bookingBatchLeft, setBookingBatchLeft] = useState(0);
   const [expandedBookingId, setExpandedBookingId] = useState<string | null>(null);
   const [hideBooked, setHideBooked] = useState(true);
+  const [showOldBooking, setShowOldBooking] = useState(false);
+  const [editCallAtId, setEditCallAtId] = useState<string | null>(null);
+  const [editCallAtVal, setEditCallAtVal] = useState('');
 
   const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'nextplay';
 
@@ -504,6 +522,7 @@ export default function NextPlayCoachingApp() {
     parentName: db.parent_name || null, outcome: db.outcome || null, paymentType: db.payment_type || null,
     athleteContext: db.athlete_context || null, prepOutput: db.prep_output || null,
     bookingPriority: db.booking_priority || null, bookingOutput: db.booking_output || null,
+    parentCallAt: db.parent_call_at || null,
   });
 
   const patchLocal = (id: string, patch: Partial<LocalSubmission>) => {
@@ -687,8 +706,10 @@ export default function NextPlayCoachingApp() {
     try {
       const out = await runModel({ transcript: sub.transcript, mode: 'booking' });
       const bucket = extractBucket(out);
-      await supabase.from('submissions').update({ booking_priority: bucket, booking_output: out }).eq('id', sub.id);
-      patchLocal(sub.id, { bookingPriority: bucket, bookingOutput: out });
+      // Keep a call time someone set by hand; otherwise take the one read from the transcript
+      const at = sub.parentCallAt || extractParentCallAt(out);
+      await supabase.from('submissions').update({ booking_priority: bucket, booking_output: out, parent_call_at: at }).eq('id', sub.id);
+      patchLocal(sub.id, { bookingPriority: bucket, bookingOutput: out, parentCallAt: at });
     } catch (e) { console.error('Booking score failed:', e); }
     setBookingRunningIds(prev => prev.filter(id => id !== sub.id));
   };
@@ -696,6 +717,13 @@ export default function NextPlayCoachingApp() {
   const runBookingBatch = async (subs: LocalSubmission[]) => {
     setBookingBatchLeft(subs.length);
     for (const s of subs) { await runBooking(s); setBookingBatchLeft(n => n - 1); }
+  };
+
+  const saveParentCallAt = async (id: string, localValue: string) => {
+    const at = localValue ? new Date(localValue).toISOString() : null;
+    const { error } = await supabase.from('submissions').update({ parent_call_at: at }).eq('id', id);
+    if (!error) { patchLocal(id, { parentCallAt: at }); setEditCallAtId(null); }
+    else alert('Failed to save the parent call time.');
   };
 
   // ---------- Pre-call brief ----------
@@ -740,7 +768,7 @@ export default function NextPlayCoachingApp() {
         output: fullOutput, transcript: transcriptText, timestamp: new Date().toISOString(), interviewDate,
         flagged: ['B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F'].includes(grade || ''), transcriptHeader: header,
         callType: 'athlete', athleteSubmissionId: null, transcriptUrl: cleanUrl(linkTranscript), recordingUrl: cleanUrl(linkRecording),
-        parentName: null, outcome: null, paymentType: null, athleteContext: null, prepOutput: null, bookingPriority: null, bookingOutput: null,
+        parentName: null, outcome: null, paymentType: null, athleteContext: null, prepOutput: null, bookingPriority: null, bookingOutput: null, parentCallAt: null,
       };
       const saved = await saveSubmission(submission);
       setResult(saved || submission);
@@ -791,7 +819,7 @@ export default function NextPlayCoachingApp() {
         transcriptUrl: cleanUrl(linkTranscript), recordingUrl: cleanUrl(linkRecording),
         parentName: extractParentName(header, fullOutput), outcome, paymentType,
         athleteContext: family ? null : (pastedContext || null),
-        prepOutput: null, bookingPriority: null, bookingOutput: null,
+        prepOutput: null, bookingPriority: null, bookingOutput: null, parentCallAt: null,
       };
       const saved = await saveSubmission(submission);
       setResult(saved || submission);
@@ -848,6 +876,7 @@ export default function NextPlayCoachingApp() {
   const filteredSubmissions = submissions.filter(sub => {
     if (filterRep !== 'all' && normalizeRepName(sub.repName) !== filterRep) return false;
     if (filterGrade !== 'all' && sub.grade?.charAt(0) !== filterGrade) return false;
+    if (filterType === 'upcoming') return sub.callType === 'athlete' && !!sub.parentCallAt && !isPastCall(sub.parentCallAt);
     if (filterType !== 'all' && sub.callType !== filterType) return false;
     const subDate = new Date(sub.interviewDate || sub.timestamp);
     const now = new Date();
@@ -860,7 +889,7 @@ export default function NextPlayCoachingApp() {
       if (filterDateEnd) { const endDate = new Date(filterDateEnd); endDate.setHours(23, 59, 59, 999); if (subDate > endDate) return false; }
     }
     return true;
-  });
+  }).sort((a, b) => filterType === 'upcoming' ? new Date(a.parentCallAt!).getTime() - new Date(b.parentCallAt!).getTime() : 0);
 
   const mySubmissions = submissions.filter(s => {
     const rep = validateRepCode(viewRepCode);
@@ -875,7 +904,11 @@ export default function NextPlayCoachingApp() {
   const linkedAthlete = (sub: LocalSubmission) => sub.athleteSubmissionId ? submissions.find(s => s.id === sub.athleteSubmissionId) || null : null;
   const familyMatches = (() => {
     const q = familySearch.trim().toLowerCase();
-    if (!q) return athleteSubs.slice(0, 10);
+    if (!q) {
+      const upcoming = athleteSubs.filter(s => s.parentCallAt && !isPastCall(s.parentCallAt)).sort((a, b) => new Date(a.parentCallAt!).getTime() - new Date(b.parentCallAt!).getTime());
+      const rest = athleteSubs.filter(s => !upcoming.includes(s));
+      return [...upcoming, ...rest].slice(0, 12);
+    }
     return athleteSubs.filter(s => `${s.athleteName} ${s.transcriptHeader || ''} ${s.repName} ${s.transcript.slice(0, 4000)}`.toLowerCase().includes(q)).slice(0, 15);
   })();
   const selectedFamily = selectedFamilyId ? submissions.find(s => s.id === selectedFamilyId) || null : null;
@@ -883,7 +916,17 @@ export default function NextPlayCoachingApp() {
   const canParent = !!currentRep?.can_parent;
 
   // Booking board
-  const bookingRows = athleteSubs.filter(s => !hideBooked || parentCallsFor(s.id).length === 0);
+  // Board = families still waiting on their parent call: drop anyone whose call time has passed,
+  // and (unless "show older" is on) anyone with no call time whose interview is older than RECENT_DAYS.
+  const byCallTime = (a: LocalSubmission, b: LocalSubmission) => {
+    if (a.parentCallAt && b.parentCallAt) return new Date(a.parentCallAt).getTime() - new Date(b.parentCallAt).getTime();
+    if (a.parentCallAt) return -1; if (b.parentCallAt) return 1;
+    return new Date(b.interviewDate || b.timestamp).getTime() - new Date(a.interviewDate || a.timestamp).getTime();
+  };
+  const bookingRows = athleteSubs.filter(s =>
+    (!hideBooked || parentCallsFor(s.id).length === 0) &&
+    (showOldBooking || (s.parentCallAt ? !isPastCall(s.parentCallAt) : isRecent(s)))
+  ).sort(byCallTime);
   const unscored = bookingRows.filter(s => !s.bookingPriority && !bookingRunningIds.includes(s.id));
   const bookingGroups: { bucket: string | null; rows: LocalSubmission[] }[] = [
     ...BUCKETS.map(b => ({ bucket: b as string, rows: bookingRows.filter(s => s.bookingPriority === b) })),
@@ -893,6 +936,25 @@ export default function NextPlayCoachingApp() {
   // ============================================
   // RENDER HELPERS (plain functions returning JSX — not components, so no remounting)
   // ============================================
+
+  // Parent call time: shows the booked time, ✏️ to set/fix it
+  const renderCallAt = (sub: LocalSubmission) => (
+    editCallAtId === sub.id ? (
+      <span style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+        <input type="datetime-local" value={editCallAtVal} onChange={(e) => setEditCallAtVal(e.target.value)} style={{ ...inputStyle, width: 'auto', padding: '6px 10px', colorScheme: 'dark' }} />
+        <button onClick={() => saveParentCallAt(sub.id, editCallAtVal)} style={{ ...primaryBtn(), padding: '6px 12px', fontSize: '12px' }}>Save</button>
+        {sub.parentCallAt && <button onClick={() => saveParentCallAt(sub.id, '')} style={{ ...ghostBtn, padding: '6px 10px', fontSize: '12px', color: styles.colors.textMuted }}>Clear</button>}
+        <button onClick={() => setEditCallAtId(null)} style={{ ...ghostBtn, padding: '6px 10px', fontSize: '12px', color: styles.colors.textMuted }}>✕</button>
+      </span>
+    ) : (
+      <span style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+        <span style={{ fontSize: '13px', fontWeight: '600', color: !sub.parentCallAt ? '#6b7280' : isPastCall(sub.parentCallAt) ? styles.colors.textMuted : styles.colors.accent, whiteSpace: 'nowrap' }}>
+          {sub.parentCallAt ? `📅 ${fmtCallAt(sub.parentCallAt)}` : '📅 Not set'}
+        </span>
+        <button onClick={(e) => { e.stopPropagation(); setEditCallAtId(sub.id); setEditCallAtVal(toLocalInput(sub.parentCallAt)); }} title="Set parent call time" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', padding: '2px' }}>✏️</button>
+      </span>
+    )
+  );
 
   const renderLinksEditor = (sub: LocalSubmission) => (
     editLinksId === sub.id ? (
@@ -943,6 +1005,12 @@ export default function NextPlayCoachingApp() {
             {renderLinksEditor(sub)}
           </div>
           {athlete && <LinkButtons transcriptUrl={athlete.transcriptUrl} recordingUrl={athlete.recordingUrl} label="Athlete interview" />}
+          {sub.callType === 'athlete' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ color: styles.colors.textMuted, fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Parent call</span>
+              {renderCallAt(sub)}
+            </div>
+          )}
           {sub.callType === 'parent' && needsRecurringReminder(sub.outcome, sub.paymentType) && (
             <Banner tone="warning">⚠️ Set up the recurring / scheduled payment in GoHighLevel ({sub.paymentType}).</Banner>
           )}
@@ -1133,7 +1201,7 @@ export default function NextPlayCoachingApp() {
                                     style={{ padding: '14px 18px', borderBottom: `1px solid ${styles.colors.border}`, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
                                     <div>
                                       <p style={{ color: styles.colors.text, fontWeight: '600', margin: '0 0 4px' }}>{f.athleteName}</p>
-                                      <p style={{ color: styles.colors.textMuted, fontSize: '13px', margin: 0 }}>Interview by {f.repName} · {fmtDate(f)}</p>
+                                      <p style={{ color: styles.colors.textMuted, fontSize: '13px', margin: 0 }}>Interview by {f.repName} · {fmtDate(f)}{f.parentCallAt && <span style={{ color: isPastCall(f.parentCallAt) ? styles.colors.textMuted : styles.colors.accent, fontWeight: 600 }}> · 📅 Parent call {fmtCallAt(f.parentCallAt)}</span>}</p>
                                     </div>
                                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                                       {f.prepOutput && <span style={{ fontSize: '11px', color: styles.colors.accent, fontWeight: '700' }}>BRIEF READY</span>}
@@ -1304,14 +1372,18 @@ export default function NextPlayCoachingApp() {
                     <div>
                       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '20px' }}>
                         <button onClick={() => runBookingBatch(unscored)} disabled={unscored.length === 0 || bookingBatchLeft > 0} style={primaryBtn(unscored.length === 0 || bookingBatchLeft > 0)}>
-                          {bookingBatchLeft > 0 ? `Scoring… ${bookingBatchLeft} left` : `Score unscored (${unscored.length})`}
+                          {bookingBatchLeft > 0 ? `Scoring… ${bookingBatchLeft} left` : `Score unscored on board (${unscored.length})`}
                         </button>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: styles.colors.textMuted, fontSize: '14px', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={showOldBooking} onChange={(e) => setShowOldBooking(e.target.checked)} style={{ width: '16px', height: '16px', accentColor: styles.colors.accent }} />
+                          Show past calls and older interviews
+                        </label>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: styles.colors.textMuted, fontSize: '14px', cursor: 'pointer' }}>
                           <input type="checkbox" checked={hideBooked} onChange={(e) => setHideBooked(e.target.checked)} style={{ width: '16px', height: '16px', accentColor: styles.colors.accent }} />
                           Hide families that already have a graded parent call
                         </label>
                       </div>
-                      <p style={{ color: styles.colors.textMuted, fontSize: '13px', marginTop: 0, marginBottom: '20px' }}>New athlete interviews are scored automatically on submit. Grad years come from the transcript only. Confirm against the CRM before moving anyone.</p>
+                      <p style={{ color: styles.colors.textMuted, fontSize: '13px', marginTop: 0, marginBottom: '20px' }}>Soonest parent call first. A family drops off once its call time passes. Interviews with no call time show for {RECENT_DAYS} days. New interviews are scored automatically; scoring also reads the booked time from the transcript (fix it with ✏️ if it moved). Grad years come from the transcript only — confirm against the CRM.</p>
                       {bookingGroups.map(group => group.rows.length > 0 && (
                         <div key={group.bucket || 'none'} style={{ marginBottom: '24px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
@@ -1329,6 +1401,7 @@ export default function NextPlayCoachingApp() {
                                       <p style={{ color: styles.colors.text, fontWeight: '600', margin: '0 0 4px' }}>{s.bookingOutput ? (expanded ? '▾ ' : '▸ ') : ''}{s.athleteName}</p>
                                       <p style={{ color: styles.colors.textMuted, fontSize: '13px', margin: 0 }}>Interview by {s.repName} · {fmtDate(s)}{parentCallsFor(s.id).length > 0 ? ' · parent call done' : ''}</p>
                                     </div>
+                                    <div onClick={(e) => e.stopPropagation()}>{renderCallAt(s)}</div>
                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                       <button onClick={() => { setSelectedSubmission(s); setDetailTab('results'); }} style={{ ...ghostBtn, fontSize: '12px' }}>Open</button>
                                       <button onClick={() => runBooking(s)} disabled={running} style={{ ...ghostBtn, fontSize: '12px', color: styles.colors.textMuted }}>{running ? 'Scoring…' : s.bookingPriority ? '↻ Re-score' : 'Score'}</button>
@@ -1483,8 +1556,8 @@ export default function NextPlayCoachingApp() {
                     ) : (
                       <>
                         <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-                          <select value={filterType} onChange={(e) => setFilterType(e.target.value as 'all' | CallType)} style={{ padding: '10px 16px', backgroundColor: styles.colors.bgCard, border: `1px solid ${styles.colors.border}`, borderRadius: '8px', color: styles.colors.text, fontSize: '14px' }}>
-                            <option value="all">All Call Types</option><option value="athlete">Athlete Interviews</option><option value="parent">Parent Calls</option>
+                          <select value={filterType} onChange={(e) => setFilterType(e.target.value as 'all' | CallType | 'upcoming')} style={{ padding: '10px 16px', backgroundColor: styles.colors.bgCard, border: `1px solid ${styles.colors.border}`, borderRadius: '8px', color: styles.colors.text, fontSize: '14px' }}>
+                            <option value="all">All Call Types</option><option value="upcoming">📅 Upcoming Parent Calls</option><option value="athlete">Athlete Interviews</option><option value="parent">Parent Calls</option>
                           </select>
                           <select value={filterRep} onChange={(e) => setFilterRep(e.target.value)} style={{ padding: '10px 16px', backgroundColor: styles.colors.bgCard, border: `1px solid ${styles.colors.border}`, borderRadius: '8px', color: styles.colors.text, fontSize: '14px' }}>
                             <option value="all">All Reps</option>
@@ -1513,22 +1586,23 @@ export default function NextPlayCoachingApp() {
                           </div>
                         )}
                         <div style={{ ...card, overflow: 'hidden' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '40px 1.4fr 110px 1fr 80px 110px 110px 40px', gap: '12px', padding: '16px 24px', backgroundColor: styles.colors.bg, borderBottom: `1px solid ${styles.colors.border}`, alignItems: 'center' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '40px 1.4fr 100px 1fr 70px 100px 150px 100px 30px', gap: '12px', padding: '16px 24px', backgroundColor: styles.colors.bg, borderBottom: `1px solid ${styles.colors.border}`, alignItems: 'center' }}>
                             <input type="checkbox" checked={filteredSubmissions.length > 0 && filteredSubmissions.every(s => selectedIds.includes(s.id))} onChange={toggleSelectAll} style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: styles.colors.accent }} />
-                            {['Athlete', 'Type', 'Rep', 'Grade', 'Call Date', 'Submitted'].map(h => <span key={h} style={{ color: styles.colors.textMuted, fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</span>)}
+                            {['Athlete', 'Type', 'Rep', 'Grade', 'Call Date', 'Parent Call', 'Submitted'].map(h => <span key={h} style={{ color: styles.colors.textMuted, fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</span>)}
                             <span></span>
                           </div>
                           {filteredSubmissions.length === 0 ? (
                             <div style={{ padding: '40px', textAlign: 'center', color: styles.colors.textMuted }}>No submissions found</div>
                           ) : filteredSubmissions.map(sub => (
                             <div key={sub.id} onClick={() => { setSelectedSubmission(sub); setDetailTab('results'); }}
-                              style={{ display: 'grid', gridTemplateColumns: '40px 1.4fr 110px 1fr 80px 110px 110px 40px', gap: '12px', padding: '16px 24px', borderBottom: `1px solid ${styles.colors.border}`, backgroundColor: selectedIds.includes(sub.id) ? 'rgba(34, 197, 94, 0.1)' : sub.flagged ? 'rgba(239, 68, 68, 0.05)' : 'transparent', alignItems: 'center', cursor: 'pointer' }}>
+                              style={{ display: 'grid', gridTemplateColumns: '40px 1.4fr 100px 1fr 70px 100px 150px 100px 30px', gap: '12px', padding: '16px 24px', borderBottom: `1px solid ${styles.colors.border}`, backgroundColor: selectedIds.includes(sub.id) ? 'rgba(34, 197, 94, 0.1)' : sub.flagged ? 'rgba(239, 68, 68, 0.05)' : 'transparent', alignItems: 'center', cursor: 'pointer' }}>
                               <input type="checkbox" checked={selectedIds.includes(sub.id)} onChange={(e) => { e.stopPropagation(); toggleSelectSubmission(sub.id); }} onClick={(e) => e.stopPropagation()} style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: styles.colors.accent }} />
                               <span style={{ color: styles.colors.text, fontSize: '14px', fontWeight: '600' }}>{sub.flagged && <span style={{ marginRight: '8px' }}>🚩</span>}{sub.athleteName}{sub.callType === 'parent' && sub.outcome && <span style={{ display: 'block', color: styles.colors.textMuted, fontSize: '12px', fontWeight: '400' }}>{sub.outcome}</span>}</span>
                               <span><TypeBadge type={sub.callType} /></span>
                               <span style={{ color: styles.colors.textMuted, fontSize: '14px' }}>{sub.repName}</span>
                               <GradeBadge grade={sub.grade} />
                               <span style={{ color: styles.colors.text, fontSize: '13px' }}>{sub.interviewDate ? fmtDate(sub) : '—'}</span>
+                              <span style={{ fontSize: '13px', fontWeight: '600', color: !sub.parentCallAt ? '#6b7280' : isPastCall(sub.parentCallAt) ? styles.colors.textMuted : styles.colors.accent }}>{sub.callType === 'athlete' && sub.parentCallAt ? fmtCallAt(sub.parentCallAt) : '—'}</span>
                               <span style={{ color: styles.colors.textMuted, fontSize: '13px' }}>{new Date(sub.timestamp).toLocaleDateString()}</span>
                               <span style={{ color: styles.colors.textMuted, fontSize: '14px' }}>→</span>
                             </div>

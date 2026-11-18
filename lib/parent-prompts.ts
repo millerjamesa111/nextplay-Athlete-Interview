@@ -256,8 +256,12 @@ Family: [Parent last name] — [Athlete first name]
 Grad year: [transcript says X — needs confirmation / not stated]
 Signals: [Category: "quote"] (one per line, or "None")
 Counter-signals: [list, or "None"]
+Parent call booked: [ISO 8601 date-time with UTC offset, e.g. 2026-11-20T19:00:00-06:00 — or "Not stated"]
 
-Every signal needs a real quote from the transcript. No quote = not a signal.`;
+Every signal needs a real quote from the transcript. No quote = not a signal.
+
+## PARENT CALL BOOKED (last line)
+If the transcript says when the parent call / parent interview is scheduled, give that date and time. Resolve relative days ("Monday", "tomorrow at 7") against the interview date in the transcript's first line. Use the time zone named in the transcript; if none is named for the booking, use the time zone in the first line (EST = -05:00, EDT = -04:00, CST = -06:00, CDT = -05:00, MST = -07:00, MDT = -06:00, PST = -08:00, PDT = -07:00). If a day is stated but no time, use 12:00 local. If nothing about the booking is stated, write "Not stated". Never guess.`;
 
 export const DEFAULT_PARENT_REFERENCE = `# 📞 FAMILY BREAKDOWN REFERENCE
 
