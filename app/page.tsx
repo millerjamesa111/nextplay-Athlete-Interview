@@ -459,6 +459,8 @@ export default function NextPlayCoachingApp() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [filterRep, setFilterRep] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [moveRepId, setMoveRepId] = useState('');      // single-submission reassign
+  const [bulkMoveRepId, setBulkMoveRepId] = useState(''); // bulk reassign
   const [filterGrade, setFilterGrade] = useState('all');
   const [filterType, setFilterType] = useState<'all' | CallType | 'upcoming'>('all');
   const [filterDateRange, setFilterDateRange] = useState('all');
@@ -621,6 +623,16 @@ export default function NextPlayCoachingApp() {
     const allSelected = filteredIds.every(id => selectedIds.includes(id));
     if (allSelected) setSelectedIds(prev => prev.filter(id => !filteredIds.includes(id)));
     else setSelectedIds(prev => Array.from(new Set([...prev, ...filteredIds])));
+  };
+
+  // Reassign submissions to another rep (e.g. a trainee who ran the call before they had a code)
+  const reassignSubmissions = async (ids: string[], repId: string) => {
+    const rep = Object.values(reps).find(r => r.id === repId);
+    if (!rep || ids.length === 0) return;
+    const { error } = await supabase.from('submissions').update({ rep_name: rep.rep_name, rep_id: rep.id }).in('id', ids);
+    if (error) { alert('Failed to move. Please try again.'); return; }
+    ids.forEach(id => patchLocal(id, { repName: rep.rep_name }));
+    setMoveRepId(''); setBulkMoveRepId('');
   };
 
   const deleteSelectedSubmissions = async () => {
@@ -1006,6 +1018,16 @@ export default function NextPlayCoachingApp() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <GradeBadge grade={sub.grade} />
+            {opts.admin && (
+              <span style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+                <select value={moveRepId} onChange={(e) => setMoveRepId(e.target.value)} title="Move this submission to another rep"
+                  style={{ padding: '6px 10px', backgroundColor: styles.colors.bg, border: `1px solid ${styles.colors.border}`, borderRadius: '6px', color: styles.colors.text, fontSize: '13px' }}>
+                  <option value="">Move to rep…</option>
+                  {Object.values(reps).filter(r => r.active && normalizeRepName(r.rep_name) !== normalizeRepName(sub.repName)).map(r => <option key={r.id} value={r.id}>{r.rep_name}</option>)}
+                </select>
+                {moveRepId && <button onClick={() => reassignSubmissions([sub.id], moveRepId)} style={{ ...primaryBtn(), padding: '6px 12px', fontSize: '13px' }}>Move</button>}
+              </span>
+            )}
             {opts.admin && <button onClick={() => { if (confirm('Delete this submission?')) deleteSubmission(sub.id); }} style={{ padding: '6px 12px', backgroundColor: 'transparent', border: `1px solid ${styles.colors.danger}`, borderRadius: '6px', color: styles.colors.danger, fontSize: '13px', cursor: 'pointer' }}>Delete</button>}
           </div>
         </div>
@@ -1598,6 +1620,12 @@ export default function NextPlayCoachingApp() {
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', backgroundColor: styles.colors.bgCard, borderRadius: '8px', marginBottom: '16px' }}>
                             <span style={{ color: styles.colors.text, fontSize: '14px' }}>{selectedIds.length} selected</span>
                             <div style={{ display: 'flex', gap: '8px' }}>
+                              <select value={bulkMoveRepId} onChange={(e) => setBulkMoveRepId(e.target.value)}
+                                style={{ padding: '8px 12px', backgroundColor: styles.colors.bg, border: `1px solid ${styles.colors.border}`, borderRadius: '6px', color: styles.colors.text, fontSize: '14px' }}>
+                                <option value="">Move to rep…</option>
+                                {Object.values(reps).filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.rep_name}</option>)}
+                              </select>
+                              {bulkMoveRepId && <button onClick={() => reassignSubmissions(selectedIds, bulkMoveRepId)} style={{ padding: '8px 16px', backgroundColor: styles.colors.info, color: '#000', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>Move {selectedIds.length}</button>}
                               <button onClick={downloadSelectedSubmissions} style={{ padding: '8px 16px', backgroundColor: styles.colors.accent, color: '#000', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>📥 Download</button>
                               <button onClick={deleteSelectedSubmissions} style={{ padding: '8px 16px', backgroundColor: styles.colors.danger, color: '#fff', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>🗑️ Delete</button>
                             </div>
@@ -1612,7 +1640,7 @@ export default function NextPlayCoachingApp() {
                           {filteredSubmissions.length === 0 ? (
                             <div style={{ padding: '40px', textAlign: 'center', color: styles.colors.textMuted }}>No submissions found</div>
                           ) : filteredSubmissions.map(sub => (
-                            <div key={sub.id} onClick={() => { setSelectedSubmission(sub); setDetailTab('results'); }}
+                            <div key={sub.id} onClick={() => { setSelectedSubmission(sub); setDetailTab('results'); setMoveRepId(''); }}
                               style={{ display: 'grid', gridTemplateColumns: '40px 1.4fr 100px 1fr 70px 100px 150px 100px 30px', gap: '12px', padding: '16px 24px', borderBottom: `1px solid ${styles.colors.border}`, backgroundColor: selectedIds.includes(sub.id) ? 'rgba(34, 197, 94, 0.1)' : sub.flagged ? 'rgba(239, 68, 68, 0.05)' : 'transparent', alignItems: 'center', cursor: 'pointer' }}>
                               <input type="checkbox" checked={selectedIds.includes(sub.id)} onChange={(e) => { e.stopPropagation(); toggleSelectSubmission(sub.id); }} onClick={(e) => e.stopPropagation()} style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: styles.colors.accent }} />
                               <span style={{ color: styles.colors.text, fontSize: '14px', fontWeight: '600' }}>{sub.flagged && <span style={{ marginRight: '8px' }}>🚩</span>}{sub.athleteName}{sub.callType === 'parent' && sub.outcome && <span style={{ display: 'block', color: styles.colors.textMuted, fontSize: '12px', fontWeight: '400' }}>{sub.outcome}</span>}</span>
